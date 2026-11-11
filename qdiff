@@ -21,6 +21,7 @@ Options:
   -d DIR      directory to search for archives (default: /var/tmp)
   -s          for directories, list only the names of differing files
   -u          full unified diff for directories (default; accepted for compatibility)
+  -c          always colorize diff output (default: only when stdout is a terminal)
   -h          show this help
 EOF
 }
@@ -32,12 +33,14 @@ die() {
 
 dir=/var/tmp
 full=1
+color=auto
 
-while getopts ":d:suh" opt; do
+while getopts ":d:such" opt; do
   case $opt in
     d) dir=$OPTARG ;;
     s) full=0 ;;
     u) full=1 ;;
+    c) color=always ;;
     h) usage; exit 0 ;;
     :) die "option -$OPTARG requires an argument" ;;
     *) die "unknown option -$OPTARG (see -h)" ;;
@@ -102,12 +105,12 @@ echo "Comparing $path with $archive"
 status=0
 if [[ $kind == file ]]; then
   "${dec[@]}" -- "$archive" > "$tmp/$name" || die "failed to decompress: $archive"
-  diff -u --color=auto --label "$archive" --label "$path" -- "$tmp/$name" "$path" || status=$?
+  diff -u --color=$color --label "$archive" --label "$path" -- "$tmp/$name" "$path" || status=$?
 else
   "${dec[@]}" -- "$archive" | tar -xf - -C "$tmp" || die "failed to extract: $archive"
   [[ -d $tmp/$name ]] || die "archive does not contain $name/: $archive"
   if [[ $full -eq 1 ]]; then
-    diff -ruN --color=auto -- "$tmp/$name" "$path" || status=$?
+    diff -ruN --color=$color -- "$tmp/$name" "$path" || status=$?
   else
     diff -rq -- "$tmp/$name" "$path" || status=$?
   fi
