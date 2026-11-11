@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 # qfb - quick compressed copy of one or more files, timestamped
+# Date: 2026-11-11
+# Version: v0.1.1
+# Purpose: compress each given file into its own timestamped archive.
 set -euo pipefail
 
 prog=${0##*/}

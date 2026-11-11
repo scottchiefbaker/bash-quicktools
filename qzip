@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
 # qzip - create a timestamped zip archive of files and directories
+# Date: 2026-11-11
+# Version: v0.1.1
+# Purpose: bundle the given files and directories into a single timestamped
+#          zip archive, optionally checksummed.
 set -euo pipefail
 
 prog=${0##*/}

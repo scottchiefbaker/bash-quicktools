@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # qtar - create a timestamped tar archive of files and directories
 # Date: 2026-11-11
+# Version: v0.1.1
 # Purpose: bundle the given files and directories into a single timestamped
 #          tar archive, optionally compressed and checksummed.
 set -euo pipefail

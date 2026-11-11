@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # qdiff - diff a file or directory against its most recent qfb/qtar archive
 # Date: 2026-11-11
+# Version: v0.1.1
 # Purpose: find the newest qfb (file) or qtar (directory) archive matching PATH
 #          and show differences between the archived contents and the current PATH.
 set -euo pipefail
