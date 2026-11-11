@@ -1,0 +1,154 @@
+#!/usr/bin/env bash
+# qtar - create a timestamped tar archive of files and directories
+# Date: 2026-11-11
+# Purpose: bundle the given files and directories into a single timestamped
+#          tar archive, optionally compressed and checksummed.
+set -euo pipefail
+
+prog=${0##*/}
+
+usage() {
+  cat <<EOF
+Usage: $prog [options] FILE|DIR [FILE|DIR ...]
+
+Create a timestamped tar archive of the given files and directories.
+
+Options:
+  -d DIR      output directory (default: /var/tmp)
+  -n NAME     name for the archive (default: name of first input)
+  -c FORMAT   compression: zst (default), gz, xz, bz2, none
+  -l LEVEL    compression level 1-9 (default: 9)
+  -x PATTERN  exclude files matching PATTERN (repeatable)
+  -s          also write a SHA-256 checksum file
+  -v          verbose output
+  -N          dry run: show what would be done
+  -h          show this help
+EOF
+}
+
+die() {
+  echo "$prog: $*" >&2
+  exit 1
+}
+
+dir=/var/tmp
+name=
+fmt=zst
+level=9
+checksum=0
+verbose=0
+dryrun=0
+excludes=()
+
+while getopts ":d:n:c:l:x:svNh" opt; do
+  case $opt in
+    d) dir=$OPTARG ;;
+    n) name=$OPTARG ;;
+    c) fmt=$OPTARG ;;
+    l) level=$OPTARG ;;
+    x) excludes+=("$OPTARG") ;;
+    s) checksum=1 ;;
+    v) verbose=1 ;;
+    N) dryrun=1 ;;
+    h) usage; exit 0 ;;
+    :) die "option -$OPTARG requires an argument" ;;
+    *) die "unknown option -$OPTARG (see -h)" ;;
+  esac
+done
+shift $((OPTIND - 1))
+
+[[ $# -gt 0 ]] || { usage >&2; exit 1; }
+
+case $fmt in
+  zst) ext=tar.zst; tool=zstd ;;
+  gz) ext=tar.gz; tool=gzip ;;
+  xz) ext=tar.xz; tool=xz ;;
+  bz2) ext=tar.bz2; tool=bzip2 ;;
+  none) ext=tar; tool= ;;
+  *) die "unknown compression format: $fmt" ;;
+esac
+if [[ -n $tool ]]; then
+  command -v "$tool" >/dev/null || die "$tool is not installed"
+fi
+[[ $level =~ ^[1-9]$ ]] || die "level must be 1-9"
+
+members=()
+for f in "$@"; do
+  [[ -e $f ]] || die "no such file or directory: $f"
+  parent=$(dirname -- "$f")
+  base=$(basename -- "$f")
+  [[ $base == -* ]] && base="./$base"
+  members+=(-C "$parent" "$base")
+done
+
+if [[ -z $name ]]; then
+  name=${1%/}
+  name=${name##*/}
+fi
+name=${name//[^A-Za-z0-9._-]/_}
+[[ -n $name ]] || name=archive
+
+stamp=$(date +%F_%H-%M)
+out="$dir/quicktar-$name-$stamp.$ext"
+
+limit=$((500 * 1024 * 1024))
+total=$(du -sbc -- "$@" | tail -n 1 | cut -f1)
+if [[ $verbose -eq 0 && $total -ge $limit ]]; then
+  verbose=1
+  echo "Inputs are over 500 MiB, listing files as they are archived"
+fi
+
+tar_args=(-cpf "$out")
+if [[ -n $tool ]]; then
+  tar_args+=(-I "$tool -$level")
+fi
+if [[ $verbose -eq 1 ]]; then
+  tar_args+=(-v)
+fi
+for x in "${excludes[@]}"; do
+  tar_args+=("--exclude=$x")
+done
+
+if [[ $dryrun -eq 1 ]]; then
+  echo "Would run: tar ${tar_args[*]} ${members[*]}"
+  exit 0
+fi
+
+mkdir -p -- "$dir"
+if ! tar "${tar_args[@]}" "${members[@]}"; then
+  rm -f -- "$out"
+  die "tar failed"
+fi
+
+base=${out##*/}
+if [[ $checksum -eq 1 ]]; then
+  (cd -- "$dir" && sha256sum -- "$base" > "$base.sha256")
+fi
+
+count=$(tar -tvf "$out" | awk '/^-/ { n++ } END { print n + 0 }')
+size=$(stat -c %s -- "$out")
+color=0
+if [[ -t 1 ]]; then
+  color=1
+fi
+human=$(awk -v b="$size" -v color="$color" 'BEGIN {
+  k = 1024
+  if (b >= k^5 * 0.98)      { v = b / k^5; u = "P"; c = 167 }
+  else if (b >= k^4 * 0.98) { v = b / k^4; u = "T"; c = 105 }
+  else if (b >= k^3 * 0.98) { v = b / k^3; u = "G"; c = 45 }
+  else if (b >= k^2 * 0.98) { v = b / k^2; u = "M"; c = 47 }
+  else if (b >= k)          { v = b / k;   u = "K"; c = 226 }
+  else                      { v = b;       u = "B"; c = 160 }
+  if (color) printf "\033[38;5;%dm", c
+  if (u == "B") printf "%dB", v
+  else printf "%.1f%s", v, u
+  if (color) printf "\033[0m"
+}')
+
+if [[ $color -eq 1 ]]; then
+  count=$'\033[1m\033[97m'"$count files"$'\033[0m'
+else
+  count="$count files"
+fi
+echo "$count, $human"
+echo "Wrote: $(realpath -- "$out")"

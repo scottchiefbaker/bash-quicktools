@@ -1,0 +1,145 @@
+#!/usr/bin/env bash
+# qfb - quick compressed copy of one or more files, timestamped
+set -euo pipefail
+
+prog=${0##*/}
+
+usage() {
+  cat <<EOF
+Usage: $prog [options] FILE [FILE ...]
+
+Compress each file into its own timestamped archive. Originals are kept
+unless -r is given.
+
+Options:
+  -d DIR      output directory (default: /var/tmp)
+  -c FORMAT   compression: gz (default), xz, zst
+  -l LEVEL    compression level 1-9 (default: 9)
+  -t          test each archive after writing it
+  -r          remove the original file after successful compression
+  -v          verbose output
+  -N          dry run: show what would be done
+  -h          show this help
+EOF
+}
+
+die() {
+  echo "$prog: $*" >&2
+  exit 1
+}
+
+dir=/var/tmp
+fmt=gz
+level=9
+test_after=0
+remove=0
+verbose=0
+dryrun=0
+
+while getopts ":d:c:l:trvNh" opt; do
+  case $opt in
+    d) dir=$OPTARG ;;
+    c) fmt=$OPTARG ;;
+    l) level=$OPTARG ;;
+    t) test_after=1 ;;
+    r) remove=1 ;;
+    v) verbose=1 ;;
+    N) dryrun=1 ;;
+    h) usage; exit 0 ;;
+    :) die "option -$OPTARG requires an argument" ;;
+    *) die "unknown option -$OPTARG (see -h)" ;;
+  esac
+done
+shift $((OPTIND - 1))
+
+[[ $# -gt 0 ]] || { usage >&2; exit 1; }
+
+case $fmt in
+  gz) tool=gzip ;;
+  xz) tool=xz ;;
+  zst) tool=zstd ;;
+  *) die "unknown compression format: $fmt" ;;
+esac
+command -v "$tool" >/dev/null || die "$tool is not installed"
+[[ $level =~ ^[1-9]$ ]] || die "level must be 1-9"
+
+compress() {
+  case $fmt in
+    gz) gzip -c "-$level" -- "$1" > "$2" ;;
+    xz) xz -c "-$level" -- "$1" > "$2" ;;
+    zst) zstd -q -c "-$level" -- "$1" > "$2" ;;
+  esac
+}
+
+test_archive() {
+  case $fmt in
+    gz) gzip -t -- "$1" ;;
+    xz) xz -t -- "$1" ;;
+    zst) zstd -q -t -- "$1" ;;
+  esac
+}
+
+color=0
+if [[ -t 1 ]]; then
+  color=1
+fi
+
+human_size() {
+  awk -v b="$1" -v color="$color" 'BEGIN {
+    k = 1024
+    if (b >= k^5 * 0.98)      { v = b / k^5; u = "P"; c = 167 }
+    else if (b >= k^4 * 0.98) { v = b / k^4; u = "T"; c = 105 }
+    else if (b >= k^3 * 0.98) { v = b / k^3; u = "G"; c = 45 }
+    else if (b >= k^2 * 0.98) { v = b / k^2; u = "M"; c = 47 }
+    else if (b >= k)          { v = b / k;   u = "K"; c = 226 }
+    else                      { v = b;       u = "B"; c = 160 }
+    if (color) printf "\033[38;5;%dm", c
+    if (u == "B") printf "%dB", v
+    else printf "%.1f%s", v, u
+    if (color) printf "\033[0m"
+  }'
+}
+
+stamp=$(date +%F_%H-%M)
+inputs=()
+outputs=()
+for f in "$@"; do
+  [[ -f $f ]] || die "not a regular file: $f"
+  [[ $f == -* ]] && f="./$f"
+  base=${f%/}
+  base=${base##*/}
+  base=${base//[^A-Za-z0-9._-]/_}
+  out="$dir/quickfile-$base-$stamp.$fmt"
+  [[ " ${outputs[*]} " == *" $out "* ]] && die "duplicate output name: $out"
+  inputs+=("$f")
+  outputs+=("$out")
+done
+
+if [[ $dryrun -eq 1 ]]; then
+  for i in "${!inputs[@]}"; do
+    echo "Would compress ${inputs[i]} -> ${outputs[i]}"
+  done
+  exit 0
+fi
+
+mkdir -p -- "$dir"
+for i in "${!inputs[@]}"; do
+  f=${inputs[i]}
+  out=${outputs[i]}
+  if ! compress "$f" "$out"; then
+    rm -f -- "$out"
+    die "compression failed: $f"
+  fi
+  if [[ $test_after -eq 1 ]] && ! test_archive "$out"; then
+    rm -f -- "$out"
+    die "integrity test failed: $out"
+  fi
+  if [[ $remove -eq 1 ]]; then
+    rm -- "$f"
+  fi
+  if [[ $verbose -eq 1 ]]; then
+    echo "$f -> $out"
+  fi
+  size=$(stat -c %s -- "$out")
+  echo "Wrote: $out ($(human_size "$size"))"
+done
