@@ -39,6 +39,7 @@ Run `-h` on any script for its full option list.
 
 # Compare a file with its latest qfb archive
 ./qdiff notes.txt
+./qfb -d notes.txt      # same comparison, via qfb's diff mode (also --diff)
 
 # List only the changed file names in a directory
 ./qdiff -s projects/

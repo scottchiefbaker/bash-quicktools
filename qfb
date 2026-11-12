@@ -2,7 +2,8 @@
 # qfb - quick compressed copy of one or more files, timestamped
 # Date: 2026-11-11
 # Version: v0.1.1
-# Purpose: compress each given file into its own timestamped archive.
+# Purpose: compress each given file into its own timestamped archive, or with
+#          -d/--diff compare each file against its most recent qfb archive.
 set -euo pipefail
 
 prog=${0##*/}
@@ -10,18 +11,28 @@ prog=${0##*/}
 usage() {
   cat <<EOF
 Usage: $prog [options] FILE [FILE ...]
+       $prog FILE [FILE ...] -d [-C]
+
+Options may appear before, after, or between file names. Use -- to end
+option parsing.
 
 Compress each file into its own timestamped archive. Originals are kept
 unless -r is given.
 
+Diff mode (-d, --diff): compare each file with the newest quickfile archive
+of that name (searched in the -o directory) and show a unified diff. Exits 1
+if any file differs. Compression options are not used in diff mode.
+
 Options:
-  -d DIR      output directory (default: /var/tmp)
+  -o DIR      output directory, or archive directory in diff mode (default: /var/tmp)
   -c FORMAT   compression: gz (default), xz, zst
   -l LEVEL    compression level 1-9 (default: 9)
   -t          test each archive after writing it
   -r          remove the original file after successful compression
   -v          verbose output
   -N          dry run: show what would be done
+  -d, --diff  diff each file against its most recent archive
+  -C, --color always colorize diff output (diff mode only; default: terminal only)
   -h          show this help
 EOF
 }
@@ -38,24 +49,120 @@ test_after=0
 remove=0
 verbose=0
 dryrun=0
+diff_mode=0
+color=auto
+fmt_set=0
+level_set=0
+other_set=0
 
-while getopts ":d:c:l:trvNh" opt; do
-  case $opt in
-    d) dir=$OPTARG ;;
-    c) fmt=$OPTARG ;;
-    l) level=$OPTARG ;;
-    t) test_after=1 ;;
-    r) remove=1 ;;
-    v) verbose=1 ;;
-    N) dryrun=1 ;;
-    h) usage; exit 0 ;;
-    :) die "option -$OPTARG requires an argument" ;;
-    *) die "unknown option -$OPTARG (see -h)" ;;
+files=()
+end_opts=0
+while [[ $# -gt 0 ]]; do
+  arg=$1
+  shift
+  if [[ $end_opts -eq 1 || $arg != -* || $arg == - ]]; then
+    files+=("$arg")
+    continue
+  fi
+  case $arg in
+    --) end_opts=1 ;;
+    --diff) diff_mode=1 ;;
+    --color) color=always ;;
+    --help) usage; exit 0 ;;
+    --*) die "unknown option $arg (see -h)" ;;
+    -*)
+      cluster=${arg#-}
+      while [[ -n $cluster ]]; do
+        opt=${cluster:0:1}
+        cluster=${cluster:1}
+        case $opt in
+          o|c|l)
+            if [[ -n $cluster ]]; then
+              val=$cluster
+            elif [[ $# -gt 0 ]]; then
+              val=$1
+              shift
+            else
+              die "option -$opt requires an argument"
+            fi
+            cluster=
+            case $opt in
+              o) dir=$val ;;
+              c) fmt=$val; fmt_set=1 ;;
+              l) level=$val; level_set=1 ;;
+            esac
+            ;;
+          t) test_after=1; other_set=1 ;;
+          r) remove=1; other_set=1 ;;
+          v) verbose=1; other_set=1 ;;
+          N) dryrun=1; other_set=1 ;;
+          d) diff_mode=1 ;;
+          C) color=always ;;
+          h) usage; exit 0 ;;
+          *) die "unknown option -$opt (see -h)" ;;
+        esac
+      done
+      ;;
   esac
 done
-shift $((OPTIND - 1))
+set -- ${files[@]+"${files[@]}"}
 
 [[ $# -gt 0 ]] || { usage >&2; exit 1; }
+
+if [[ $diff_mode -eq 1 ]]; then
+  if [[ $fmt_set -eq 1 || $level_set -eq 1 || $other_set -eq 1 ]]; then
+    die "-c, -l, -t, -r, -v, and -N cannot be used with -d/--diff"
+  fi
+  tmproot=/tmp/opencode
+  [[ -d $tmproot ]] || tmproot=${TMPDIR:-/tmp}
+  tmp=$(mktemp -d "$tmproot/qfb.XXXXXX")
+  trap 'rm -rf -- "$tmp"' EXIT
+
+  overall=0
+  for path in "$@"; do
+    [[ -f $path ]] || die "not a regular file: $path"
+
+    name=${path##*/}
+    [[ -n $name && $name != . && $name != .. ]] || die "cannot determine archive name for: $path"
+    name=${name//[^A-Za-z0-9._-]/_}
+
+    stamp_re='^[0-9]{4}-[0-9]{2}-[0-9]{2}_[0-9]{2}-[0-9]{2}$'
+    candidates=()
+    for ext in gz xz zst; do
+      for archive in "$dir/quickfile-$name-"*.$ext; do
+        [[ -f $archive ]] || continue
+        stamp=${archive##*/quickfile-$name-}
+        stamp=${stamp%.$ext}
+        [[ $stamp =~ $stamp_re ]] || continue
+        candidates+=("$stamp|$ext|$archive")
+      done
+    done
+
+    [[ ${#candidates[@]} -gt 0 ]] || die "no quickfile archive found for $path in $dir"
+
+    newest=$(printf '%s\n' "${candidates[@]}" | sort -r | head -n 1)
+    ext=$(cut -d'|' -f2 <<< "$newest")
+    archive=$(cut -d'|' -f3- <<< "$newest")
+
+    case $ext in
+      gz) dec=(gzip -dc) ;;
+      xz) dec=(xz -dc) ;;
+      zst) dec=(zstd -dqc) ;;
+    esac
+    command -v "${dec[0]}" >/dev/null || die "${dec[0]} is not installed"
+
+    echo "Comparing $path with $archive"
+    "${dec[@]}" -- "$archive" > "$tmp/$name" || die "failed to decompress: $archive"
+    status=0
+    diff -u --color=$color --label "$archive" --label "$path" -- "$tmp/$name" "$path" || status=$?
+    if [[ $status -eq 0 ]]; then
+      echo "$path matches $archive"
+    else
+      overall=1
+    fi
+  done
+  exit "$overall"
+fi
 
 case $fmt in
   gz) tool=gzip ;;
@@ -82,13 +189,13 @@ test_archive() {
   esac
 }
 
-color=0
+out_color=0
 if [[ -t 1 ]]; then
-  color=1
+  out_color=1
 fi
 
 human_size() {
-  awk -v b="$1" -v color="$color" 'BEGIN {
+  awk -v b="$1" -v color="$out_color" 'BEGIN {
     k = 1024
     if (b >= k^5 * 0.98)      { v = b / k^5; u = "P"; c = 167 }
     else if (b >= k^4 * 0.98) { v = b / k^4; u = "T"; c = 105 }

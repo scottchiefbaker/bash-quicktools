@@ -13,6 +13,8 @@ usage() {
 Usage: $prog [options] FILE|DIR [FILE|DIR ...]
 
 Create a timestamped zip archive of the given files and directories.
+Options may appear before, after, or between file names. Use -- to end
+option parsing.
 
 Options:
   -d DIR      output directory (default: /var/tmp)
@@ -37,20 +39,52 @@ verbose=0
 dryrun=0
 excludes=()
 
-while getopts ":d:n:x:svNh" opt; do
-  case $opt in
-    d) dir=$OPTARG ;;
-    n) name=$OPTARG ;;
-    x) excludes+=("$OPTARG") ;;
-    s) checksum=1 ;;
-    v) verbose=1 ;;
-    N) dryrun=1 ;;
-    h) usage; exit 0 ;;
-    :) die "option -$OPTARG requires an argument" ;;
-    *) die "unknown option -$OPTARG (see -h)" ;;
+files=()
+end_opts=0
+while [[ $# -gt 0 ]]; do
+  arg=$1
+  shift
+  if [[ $end_opts -eq 1 || $arg != -* || $arg == - ]]; then
+    files+=("$arg")
+    continue
+  fi
+  case $arg in
+    --) end_opts=1 ;;
+    --help) usage; exit 0 ;;
+    --*) die "unknown option $arg (see -h)" ;;
+    -*)
+      cluster=${arg#-}
+      while [[ -n $cluster ]]; do
+        opt=${cluster:0:1}
+        cluster=${cluster:1}
+        case $opt in
+          d|n|x)
+            if [[ -n $cluster ]]; then
+              val=$cluster
+            elif [[ $# -gt 0 ]]; then
+              val=$1
+              shift
+            else
+              die "option -$opt requires an argument"
+            fi
+            cluster=
+            case $opt in
+              d) dir=$val ;;
+              n) name=$val ;;
+              x) excludes+=("$val") ;;
+            esac
+            ;;
+          s) checksum=1 ;;
+          v) verbose=1 ;;
+          N) dryrun=1 ;;
+          h) usage; exit 0 ;;
+          *) die "unknown option -$opt (see -h)" ;;
+        esac
+      done
+      ;;
   esac
 done
-shift $((OPTIND - 1))
+set -- ${files[@]+"${files[@]}"}
 
 [[ $# -gt 0 ]] || { usage >&2; exit 1; }
 command -v zip >/dev/null || die "zip is not installed"
