@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # qtar - create a timestamped tar archive of files and directories
 # Date: 2026-11-11
-# Version: v0.1.1
 # Purpose: bundle the given files and directories into a single timestamped
 #          tar archive, optionally compressed and checksummed.
 set -euo pipefail
 
+version=v0.1.1
 prog=${0##*/}
 
 usage() {
@@ -33,6 +33,7 @@ Options:
   -N          dry run: show what would be done
   -d, --diff  diff each directory against its most recent archive
   -C, --color always colorize diff output (diff mode only; default: terminal only)
+  --version   show version
   -h          show this help
 EOF
 }
@@ -70,6 +71,7 @@ while [[ $# -gt 0 ]]; do
     --help) usage; exit 0 ;;
     --diff) diff_mode=1 ;;
     --color) color=always ;;
+    --version) echo "$prog $version"; exit 0 ;;
     --*) die "unknown option $arg (see -h)" ;;
     -*)
       cluster=${arg#-}

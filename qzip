@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # qzip - create a timestamped zip archive of files and directories
 # Date: 2026-11-11
-# Version: v0.1.1
 # Purpose: bundle the given files and directories into a single timestamped
 #          zip archive, optionally checksummed.
 set -euo pipefail
 
+version=v0.1.1
 prog=${0##*/}
 
 usage() {
@@ -23,6 +23,7 @@ Options:
   -s          also write a SHA-256 checksum file
   -v          verbose output
   -N          dry run: show what would be done
+  --version   show version
   -h          show this help
 EOF
 }
@@ -51,6 +52,7 @@ while [[ $# -gt 0 ]]; do
   case $arg in
     --) end_opts=1 ;;
     --help) usage; exit 0 ;;
+    --version) echo "$prog $version"; exit 0 ;;
     --*) die "unknown option $arg (see -h)" ;;
     -*)
       cluster=${arg#-}
