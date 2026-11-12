@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Quick Bash tools for timestamped file compression and archives.">
+  <title>Quicktools — simple timestamped archives</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #17251f;
+      --muted: #59675f;
+      --paper: #f6f7f2;
+      --panel: #fff;
+      --green: #276746;
+      --line: #dce4da;
+      --code: #16241d;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--paper);
+      color: var(--ink);
+      font: 16px/1.65 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    header, main, footer { width: min(860px, calc(100% - 2rem)); margin-inline: auto; }
+    header { padding: 4.5rem 0 2.5rem; }
+    .eyebrow { color: var(--green); font-size: .78rem; font-weight: 750; letter-spacing: .12em; text-transform: uppercase; }
+    h1 { max-width: 680px; margin: .55rem 0 1rem; font-size: clamp(2.5rem, 8vw, 4.5rem); letter-spacing: -.055em; line-height: 1.05; }
+    .intro { max-width: 650px; color: var(--muted); font-size: 1.15rem; }
+    main { padding-bottom: 3rem; }
+    section { margin: 2.5rem 0; }
+    h2 { margin-bottom: .4rem; font-size: 1.65rem; letter-spacing: -.025em; }
+    h3 { margin: 0 0 .35rem; font-size: 1.1rem; }
+    p { margin-top: .45rem; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; margin-top: 1.25rem; }
+    .card { padding: 1.25rem; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; }
+    .card p { margin-bottom: 0; color: var(--muted); }
+    code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    :not(pre) > code { padding: .12rem .35rem; background: #e9eee7; border-radius: 4px; font-size: .9em; }
+    pre { overflow-x: auto; margin: .8rem 0 1rem; padding: 1rem 1.15rem; background: var(--code); color: #e9f4eb; border-radius: 10px; font-size: .9rem; line-height: 1.6; }
+    .note { padding: 1rem 1.15rem; background: #edf3e9; border-left: 3px solid var(--green); border-radius: 0 8px 8px 0; }
+    a { color: var(--green); }
+    footer { padding: 1.5rem 0 2.5rem; border-top: 1px solid var(--line); color: var(--muted); font-size: .9rem; }
+    @media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="eyebrow">Small tools, useful archives</div>
+    <h1>Make a copy.<br>Keep the original.</h1>
+    <p class="intro"><strong>Quicktools</strong> is a set of small Bash scripts for creating timestamped compressed copies and archives, then checking how files or folders have changed.</p>
+  </header>
+
+  <main>
+    <section aria-labelledby="tools-heading">
+      <h2 id="tools-heading">Three scripts, three jobs</h2>
+      <div class="grid">
+        <article class="card">
+          <h3><code>qfb</code> — one file at a time</h3>
+          <p>Compresses each file separately with gzip, xz, or zstd. Keeps the source unless you ask to remove it.</p>
+        </article>
+        <article class="card">
+          <h3><code>qtar</code> — tar archives</h3>
+          <p>Packs files and directories together. Choose zstd, gzip, xz, bzip2, or no compression; optionally write a SHA-256 checksum.</p>
+        </article>
+        <article class="card">
+          <h3><code>qzip</code> — zip archives</h3>
+          <p>Packs files and directories into a zip, with optional exclusions and a SHA-256 checksum.</p>
+        </article>
+      </div>
+      <p>By default, archives go in <code>/var/tmp</code> and include a timestamp in their name. Use <code>-o DIR</code> to choose another output directory.</p>
+    </section>
+
+    <section aria-labelledby="examples-heading">
+      <h2 id="examples-heading">A few examples</h2>
+      <p>Run these from the directory containing the scripts (or put the scripts on your <code>PATH</code>):</p>
+      <pre><code># Compress one file with the default format (gzip); keep the original
+./qfb notes.txt
+
+# Use xz, verify the archive, then remove the original after success
+./qfb -c xz -t -r notes.txt
+
+# Make a compressed tar archive of a project, with a checksum
+./qtar -s projects/
+
+# Make a zip and leave out log files
+./qzip -x '*.log' projects/
+
+# Preview the tar command without creating an archive
+./qtar -N projects/</code></pre>
+    </section>
+
+    <section aria-labelledby="compare-heading">
+      <h2 id="compare-heading">Compare against an archive</h2>
+      <p><code>qfb</code> can compare a file with its newest matching compressed copy; <code>qtar</code> can compare a directory with its newest matching tar archive. Both show a diff when things changed.</p>
+      <pre><code>./qfb --diff notes.txt
+./qtar --diff projects/</code></pre>
+      <p class="note"><strong>Heads up:</strong> diff mode searches the output directory (default <code>/var/tmp</code>). It supports <code>qfb</code> and <code>qtar</code> archives, not zip archives.</p>
+    </section>
+
+    <section aria-labelledby="start-heading">
+      <h2 id="start-heading">Getting started</h2>
+      <p>These are standalone Bash scripts—no build or package manager is needed. Make sure the scripts are executable, then run <code>./qfb -h</code>, <code>./qtar -h</code>, or <code>./qzip -h</code> for all options. Install the command-line tools for the archive formats you use (such as <code>gzip</code>, <code>xz</code>, <code>zstd</code>, <code>tar</code>, and <code>zip</code>).</p>
+      <p>Names have minute-level timestamps, so two runs for the same input within one minute can overwrite each other. For repeatable comparisons, keep the input name consistent and use the same output directory.</p>
+    </section>
+  </main>
+
+  <footer>Quicktools — straightforward timestamped copies and archives from the command line.</footer>
+</body>
+</html>
