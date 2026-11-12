@@ -11,13 +11,19 @@ prog=${0##*/}
 usage() {
   cat <<EOF
 Usage: $prog [options] FILE|DIR [FILE|DIR ...]
+       $prog FILE|DIR [FILE|DIR ...] -d [-o DIR] [-x PATTERN]
 
 Create a timestamped tar archive of the given files and directories.
 Options may appear before, after, or between file names. Use -- to end
 option parsing.
 
+Diff mode (--diff): compare each directory with the newest quicktar archive
+of that name (searched in the -o directory) and show a unified diff. Exits 1
+if any directory differs. Compression, naming, checksum, and -v/-N options are
+not used in diff mode.
+
 Options:
-  -d DIR      output directory (default: /var/tmp)
+  -o DIR      output directory, or archive directory in diff mode (default: /var/tmp)
   -n NAME     name for the archive (default: name of first input)
   -c FORMAT   compression: zst (default), gz, xz, bz2, none
   -l LEVEL    compression level 1-9 (default: 9)
@@ -25,6 +31,8 @@ Options:
   -s          also write a SHA-256 checksum file
   -v          verbose output
   -N          dry run: show what would be done
+  -d, --diff  diff each directory against its most recent archive
+  -C, --color always colorize diff output (diff mode only; default: terminal only)
   -h          show this help
 EOF
 }
@@ -41,6 +49,11 @@ level=9
 checksum=0
 verbose=0
 dryrun=0
+diff_mode=0
+color=auto
+fmt_set=0
+level_set=0
+other_set=0
 excludes=()
 
 files=()
@@ -55,6 +68,8 @@ while [[ $# -gt 0 ]]; do
   case $arg in
     --) end_opts=1 ;;
     --help) usage; exit 0 ;;
+    --diff) diff_mode=1 ;;
+    --color) color=always ;;
     --*) die "unknown option $arg (see -h)" ;;
     -*)
       cluster=${arg#-}
@@ -62,7 +77,7 @@ while [[ $# -gt 0 ]]; do
         opt=${cluster:0:1}
         cluster=${cluster:1}
         case $opt in
-          d|n|c|l|x)
+          o|n|c|l|x)
             if [[ -n $cluster ]]; then
               val=$cluster
             elif [[ $# -gt 0 ]]; then
@@ -73,16 +88,18 @@ while [[ $# -gt 0 ]]; do
             fi
             cluster=
             case $opt in
-              d) dir=$val ;;
-              n) name=$val ;;
-              c) fmt=$val ;;
-              l) level=$val ;;
+              o) dir=$val ;;
+              n) name=$val; other_set=1 ;;
+              c) fmt=$val; fmt_set=1 ;;
+              l) level=$val; level_set=1 ;;
               x) excludes+=("$val") ;;
             esac
             ;;
           s) checksum=1 ;;
-          v) verbose=1 ;;
-          N) dryrun=1 ;;
+          d) diff_mode=1 ;;
+          v) verbose=1; other_set=1 ;;
+          N) dryrun=1; other_set=1 ;;
+          C) color=always ;;
           h) usage; exit 0 ;;
           *) die "unknown option -$opt (see -h)" ;;
         esac
@@ -93,6 +110,72 @@ done
 set -- ${files[@]+"${files[@]}"}
 
 [[ $# -gt 0 ]] || { usage >&2; exit 1; }
+
+if [[ $diff_mode -eq 1 ]]; then
+  if [[ $fmt_set -eq 1 || $level_set -eq 1 || $other_set -eq 1 ]]; then
+    die "-c, -l, -n, -v, and -N cannot be used with --diff"
+  fi
+  if [[ $checksum -eq 1 ]]; then
+    die "-s cannot be used with --diff"
+  fi
+  tmproot=/tmp/opencode
+  [[ -d $tmproot ]] || tmproot=${TMPDIR:-/tmp}
+  tmp=$(mktemp -d "$tmproot/qtar.XXXXXX")
+  trap 'rm -rf -- "$tmp"' EXIT
+
+  stamp_re='^[0-9]{4}-[0-9]{2}-[0-9]{2}_[0-9]{2}-[0-9]{2}$'
+  overall=0
+  for path in "$@"; do
+    [[ -d $path ]] || die "not a directory: $path"
+
+    name=${path%/}
+    name=${name##*/}
+    [[ -n $name && $name != . && $name != .. ]] || die "cannot determine archive name for: $path"
+    name=${name//[^A-Za-z0-9._-]/_}
+
+    candidates=()
+    for ext in tar.zst tar.gz tar.xz tar.bz2 tar; do
+      for archive in "$dir/quicktar-$name-"*.$ext; do
+        [[ -f $archive ]] || continue
+        stamp=${archive##*/quicktar-$name-}
+        stamp=${stamp%.$ext}
+        [[ $stamp =~ $stamp_re ]] || continue
+        candidates+=("$stamp|$ext|$archive")
+      done
+    done
+
+    [[ ${#candidates[@]} -gt 0 ]] || die "no quicktar archive found for $path in $dir"
+
+    newest=$(printf '%s\n' "${candidates[@]}" | sort -r | head -n 1)
+    ext=$(cut -d'|' -f2 <<< "$newest")
+    archive=$(cut -d'|' -f3- <<< "$newest")
+
+    case $ext in
+      tar.gz) dec=(gzip -dc) ;;
+      tar.xz) dec=(xz -dc) ;;
+      tar.zst) dec=(zstd -dqc) ;;
+      tar.bz2) dec=(bzip2 -dc) ;;
+      tar) dec=(cat) ;;
+    esac
+    command -v "${dec[0]}" >/dev/null || die "${dec[0]} is not installed"
+
+    echo "Comparing $path with $archive"
+    extract="$tmp/$name.d"
+    mkdir -p -- "$extract"
+    "${dec[@]}" -- "$archive" | tar -xf - -C "$extract" || die "failed to extract: $archive"
+    [[ -d $extract/$name ]] || die "archive does not contain $name/: $archive"
+
+    status=0
+    diff -ruN --color=$color -- "$extract/$name" "$path" || status=$?
+    if [[ $status -eq 0 ]]; then
+      echo "$path matches $archive"
+    else
+      overall=1
+    fi
+    rm -rf -- "$extract"
+  done
+  exit "$overall"
+fi
 
 case $fmt in
   zst) ext=tar.zst; tool=zstd ;;
