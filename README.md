@@ -1,4 +1,4 @@
-# baker
+# Quick Archive Tools
 
 Small Bash scripts for quickly making timestamped archives and comparing files and directories
 against them.
