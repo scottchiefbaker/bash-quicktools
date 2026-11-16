@@ -137,10 +137,10 @@ if [[ $diff_mode -eq 1 ]]; then
 
     candidates=()
     for ext in tar.zst tar.gz tar.xz tar.bz2 tar; do
-      for archive in "$dir/quicktar-$name-"*.$ext; do
+      for archive in "$dir/quicktar-$name-"*."$ext"; do
         [[ -f $archive ]] || continue
-        stamp=${archive##*/quicktar-$name-}
-        stamp=${stamp%.$ext}
+        stamp=${archive##*/quicktar-"$name"-}
+        stamp=${stamp%."$ext"}
         [[ $stamp =~ $stamp_re ]] || continue
         candidates+=("$stamp|$ext|$archive")
       done
