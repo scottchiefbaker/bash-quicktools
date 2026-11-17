@@ -5,7 +5,7 @@
 #          -d/--diff compare each file against its most recent qfb archive.
 set -euo pipefail
 
-version=v0.1.4
+version=v0.1.5
 prog=${0##*/}
 
 usage() {

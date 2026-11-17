@@ -5,7 +5,7 @@
 #          tar archive, optionally compressed and checksummed.
 set -euo pipefail
 
-version=v0.1.4
+version=v0.1.5
 prog=${0##*/}
 
 usage() {
