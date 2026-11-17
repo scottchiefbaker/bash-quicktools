@@ -234,7 +234,7 @@ if [[ $verbose -eq 0 && $total -ge $limit ]]; then
   echo "Inputs are over 500 MiB, listing files as they are archived"
 fi
 
-tar_args=(-cpf "$out")
+tar_args=(-cpf "$out" --exclude-vcs)
 if [[ -n $tool ]]; then
   tar_args+=(-I "$tool -$level")
 fi
