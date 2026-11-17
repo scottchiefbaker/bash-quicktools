@@ -33,3 +33,4 @@ Bash-only repo: three standalone scripts at the root (`qfb`, `qtar`, `qzip`) and
 ## Repo state
 
 - This is a git repo with a short history (`First commit`, `Add a README`, `Add a version string`). Commit messages are short imperative sentences.
+- Versions follow `vMAJOR.MINOR.PATCH` in the `version=` line of each script. Odd minor numbers (`v0.1.x`, `v0.3.x`) are devel builds. Even minor numbers (`v0.2.x`, `v0.4.x`) are release builds. Bump the minor number to switch between them, and keep all three scripts on the same version.
