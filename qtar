@@ -55,7 +55,7 @@ if [[ $has_zstd -eq 1 ]]; then
 else
   fmt=gz
 fi
-level=9
+level=
 checksum=0
 verbose=0
 dryrun=0
@@ -186,6 +186,13 @@ if [[ $diff_mode -eq 1 ]]; then
     rm -rf -- "$extract"
   done
   exit "$overall"
+fi
+
+if [[ $level_set -eq 0 ]]; then
+  case $fmt in
+    zst) level=3 ;;
+    *) level=9 ;;
+  esac
 fi
 
 case $fmt in
