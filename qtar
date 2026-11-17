@@ -25,8 +25,8 @@ not used in diff mode.
 Options:
   -o DIR      output directory, or archive directory in diff mode (default: /var/tmp)
   -n NAME     name for the archive (default: name of first input)
-  -c FORMAT   compression: zst (default), gz, xz, bz2, none
-  -l LEVEL    compression level 1-9 (default: 9)
+  -c FORMAT   compression: zst (default)
+  -l LEVEL    compression level 1-9
   -x PATTERN  exclude files matching PATTERN (repeatable)
   -s          also write a SHA-256 checksum file
   -v          verbose output
@@ -43,9 +43,18 @@ die() {
   exit 1
 }
 
+has_gzip=0
+has_zstd=0
+command -v gzip >/dev/null && has_gzip=1
+command -v zstd >/dev/null && has_zstd=1
+
 dir=/var/tmp
 name=
-fmt=zst
+if [[ $has_zstd -eq 1 ]]; then
+  fmt=zst
+else
+  fmt=gz
+fi
 level=9
 checksum=0
 verbose=0
@@ -153,9 +162,9 @@ if [[ $diff_mode -eq 1 ]]; then
     archive=$(cut -d'|' -f3- <<< "$newest")
 
     case $ext in
-      tar.gz) dec=(gzip -dc) ;;
+      tar.gz) [[ $has_gzip -eq 1 ]] || die "gzip is not installed"; dec=(gzip -dc) ;;
       tar.xz) dec=(xz -dc) ;;
-      tar.zst) dec=(zstd -dqc) ;;
+      tar.zst) [[ $has_zstd -eq 1 ]] || die "zstd is not installed"; dec=(zstd -dqc) ;;
       tar.bz2) dec=(bzip2 -dc) ;;
       tar) dec=(cat) ;;
     esac
