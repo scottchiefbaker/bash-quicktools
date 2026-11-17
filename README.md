@@ -1,4 +1,4 @@
-# Quick Archive Tools
+# 📦 Quick Archive Tools
 
 Small Bash scripts for quickly making timestamped archives and comparing files and directories
 against them.
@@ -12,7 +12,7 @@ against them.
 Archives are written to `/var/tmp` by default and named like
 `quickfile-NAME-YYYY-MM-DD_HH-MM.gz` or `quicktar-NAME-YYYY-MM-DD_HH-MM.tar.zst`.
 
-## Requirements
+## 🔧 Requirements
 
 - Bash
 - The tools for the formats you use: `gzip`, `xz`, `zstd`, `bzip2`, `tar`, `zip`/`zipinfo`,
@@ -20,7 +20,7 @@ Archives are written to `/var/tmp` by default and named like
 - `diff` for `qfb --diff` and `qtar --diff`, plus the decompressor for the archive format being
   read.
 
-## Usage
+## 🚀 Usage
 
 Run `-h` on any script for its full option list.
 
@@ -47,7 +47,7 @@ Run `-h` on any script for its full option list.
 ./qtar --diff projects/
 ```
 
-## Notes
+## 📝 Notes
 
 - Timestamps have minute resolution, so two runs in the same minute overwrite each other's output.
 - `qfb --diff` compares files and `qtar --diff` compares directories, in both cases against the
